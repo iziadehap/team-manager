@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function userId() {
+      return request.auth.uid;
+    }
+    
+    // Check if user is member of a team (members stored as ARRAY in team document)
+    function isTeamMember(teamId) {
+      let teamDoc = get(/databases/$(database)/documents/teams/$(teamId));
+      return teamDoc != null && 
+             teamDoc.data.members != null &&
+             teamDoc.data.members[userId()] != null;
+    }
+    
+    // Check if user is admin of a team (role stored in members map)
+    function isTeamAdmin(teamId) {
+      let teamDoc = get(/databases/$(database)/documents/teams/$(teamId));
+      return teamDoc != null && 
+             teamDoc.data.members != null &&
+             teamDoc.data.members[userId()] != null &&
+             teamDoc.data.members[userId()].role == 'admin';
+    }
+    
+    // USERS collection
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && uid == userId();
+      allow delete: if false;
+    }
+    
+    // TEAMS collection
+    match /teams/{teamId} {
+      allow read: if isSignedIn() && isTeamMember(teamId);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && isTeamAdmin(teamId);
+      allow delete: if isSignedIn() && isTeamAdmin(teamId);
+    }
+    
+    // INVITE CODES collection
+    match /inviteCodes/{code} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if false;
+      allow delete: if isSignedIn();
+    }
+    
+    // TASKS subcollection
+    match /teams/{teamId}/tasks/{taskId} {
+      allow read: if isSignedIn() && isTeamMember(teamId);
+      allow create: if isSignedIn() && isTeamMember(teamId);
+      allow update: if isSignedIn() && isTeamMember(teamId);
+      allow delete: if isSignedIn() && isTeamAdmin(teamId);
+    }
+  }
+}
